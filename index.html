@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TaskFlow — Team Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ============ APP SHELL ============ -->
+<div id="app">
+
+  <!-- ---------- LOGIN ---------- -->
+  <section id="view-login" class="view view-login">
+    <div class="login-card">
+      <div class="brand">
+        <span class="brand-mark">TF</span>
+        <h1>TaskFlow</h1>
+        <p class="brand-sub">Weekly tasks. Real points. One team.</p>
+      </div>
+
+      <div class="login-tabs" role="tablist">
+        <button class="login-tab active" data-tab="member" role="tab">Team member</button>
+        <button class="login-tab" data-tab="admin" role="tab">Admin</button>
+      </div>
+
+      <form id="form-login-member" class="login-form" autocomplete="off">
+        <label for="input-phone">Mobile number</label>
+        <input id="input-phone" type="tel" inputmode="numeric" placeholder="98xxxxxxxx" required>
+        <button type="submit" class="btn btn-primary btn-block">Log in</button>
+      </form>
+
+      <form id="form-login-admin" class="login-form hidden" autocomplete="off">
+        <label for="input-code">4-digit admin code</label>
+        <input id="input-code" type="password" inputmode="numeric" maxlength="4" placeholder="••••" required>
+        <button type="submit" class="btn btn-primary btn-block">Enter admin</button>
+      </form>
+
+      <p id="login-error" class="login-error hidden"></p>
+    </div>
+  </section>
+
+  <!-- ---------- MAIN APP (after login) ---------- -->
+  <div id="view-main" class="view view-main hidden">
+
+    <header class="topbar">
+      <div class="topbar-id">
+        <span class="topbar-name" id="tb-name">—</span>
+        <span class="topbar-role" id="tb-role">—</span>
+      </div>
+      <button id="btn-logout" class="icon-btn" title="Log out" aria-label="Log out">📤</button>
+    </header>
+
+    <main class="content" id="content">
+
+      <!-- DASHBOARD -->
+      <section id="pane-dashboard" class="pane">
+        <div class="points-card">
+          <div class="points-ring" id="points-ring">
+            <span id="points-total">0</span>
+            <small>/ 25 pts</small>
+          </div>
+          <div class="week-bars" id="week-bars"></div>
+        </div>
+        <h2 class="pane-title">This week's tasks</h2>
+        <div id="task-list" class="task-list"></div>
+      </section>
+
+      <!-- FORM / TASK ACTION PANE (rendered per department) -->
+      <section id="pane-form" class="pane hidden">
+        <button class="back-link" data-back="dashboard">← Back</button>
+        <div id="form-host"></div>
+      </section>
+
+      <!-- CHAT -->
+      <section id="pane-chat" class="pane hidden">
+        <h2 class="pane-title">Team chat</h2>
+        <div class="chat-container">
+          <div id="chat-log" class="chat-log"></div>
+          <form id="form-chat" class="chat-input-row">
+            <input id="chat-input" type="text" placeholder="Message the team…" autocomplete="off" required>
+            <button type="submit" class="btn btn-primary">Send</button>
+          </form>
+        </div>
+      </section>
+
+
+      <!-- PROFILE -->
+      <section id="pane-profile" class="pane hidden">
+        <h2 class="pane-title">Profile</h2>
+        <div id="profile-host" class="profile-card"></div>
+      </section>
+
+      <!-- ADMIN: TEAM OVERVIEW -->
+      <section id="pane-admin-team" class="pane hidden">
+        <h2 class="pane-title">Team overview</h2>
+        <div id="admin-team-list" class="admin-team-list"></div>
+      </section>
+
+      <!-- ADMIN: MEMBER DETAIL -->
+      <section id="pane-admin-detail" class="pane hidden">
+        <button class="back-link" data-back="admin-team">← Back to team</button>
+        <div id="admin-detail-host"></div>
+      </section>
+
+      <!-- ADMIN: ASSIGN TASK -->
+      <section id="pane-admin-assign" class="pane hidden">
+        <h2 class="pane-title">Assign a task</h2>
+        <form id="form-assign-task" class="stack-form">
+          <label for="assign-member">Member</label>
+          <select id="assign-member" required></select>
+
+          <label for="assign-week">Week</label>
+          <select id="assign-week" required>
+            <option value="1">Week 1</option>
+            <option value="2">Week 2</option>
+            <option value="3">Week 3</option>
+          </select>
+
+          <label for="assign-desc">Task detail</label>
+          <textarea id="assign-desc" rows="3" placeholder="e.g. Perform analysis on farmer dataset" required></textarea>
+
+          <label for="assign-points">Points</label>
+          <input id="assign-points" type="number" min="1" max="25" value="2" required>
+
+          <button type="submit" class="btn btn-primary btn-block">Assign task</button>
+        </form>
+        <p id="assign-msg" class="hint hidden"></p>
+      </section>
+
+    </main>
+
+    <!-- BOTTOM NAV -->
+    <nav class="bottomnav" id="bottomnav">
+      <button class="nav-btn active" data-pane="dashboard">
+        <span class="nav-ico">🏠</span><span>Home</span>
+      </button>
+      <button class="nav-btn" data-pane="form">
+        <span class="nav-ico">📋</span><span>Tasks</span>
+      </button>
+      <button class="nav-btn" data-pane="chat">
+        <span class="nav-ico">💬</span><span>Chat</span>
+        <span class="nav-badge hidden" id="chat-badge"></span>
+      </button>
+      <button class="nav-btn" data-pane="profile">
+        <span class="nav-ico">👤</span><span>Profile</span>
+      </button>
+      <!-- admin-only extra tabs injected by JS -->
+    </nav>
+
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+</div>
+
+<!-- Firebase (Cloud Messaging) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
+
+<script src="backend.js"></script>
+</body>
+</html>
