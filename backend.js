@@ -288,7 +288,7 @@ async function goTo(pane, opts) {
   if (pane === "profile") await renderProfile();
   if (pane === "admin-team") await renderAdminTeam();
   if (pane === "admin-detail") await renderAdminDetail(opts && opts.memberId);
-    if (pane === "admin-assign") await renderAdminAssign();
+  if (pane === "admin-assign") await renderAdminAssign(opts);
   if (pane === "question-task") await renderQuestionTaskPane(opts && opts.taskId);
 
   document.getElementById("content").scrollTo({ top: 0 });
@@ -607,6 +607,7 @@ async function renderAdminDetail(memberId) {
   (detail.tasks || []).forEach(t => {
     const card = document.createElement("div");
     card.className = "task-card" + (t.completed ? " is-done" : "");
+    const canEdit = t.type === "QUESTION";
     card.innerHTML = `
       <div class="t-body">
         <div class="t-desc">${escapeHtml(t.description)}</div>
@@ -614,8 +615,25 @@ async function renderAdminDetail(memberId) {
       </div>
       <div class="task-card-actions">
         <span class="pill ${t.completed ? "done" : ""}">${t.completed ? "Done" : "Pending"}</span>
+        ${canEdit ? `<button type="button" class="btn btn-ghost btn-sm admin-edit-task">Edit</button>` : ""}
         <button type="button" class="btn btn-ghost btn-sm admin-delete-task" aria-label="Delete task">Delete</button>
       </div>`;
+
+    const editBtn = card.querySelector(".admin-edit-task");
+    if (editBtn) {
+      editBtn.addEventListener("click", async () => {
+        setAdminQuestionEditorMode("edit", t.id);
+        await goTo("admin-assign", {
+          editTask: {
+            taskId: t.id,
+            memberId,
+            week: t.week,
+            points: t.points,
+            title: t.description
+          }
+        });
+      });
+    }
 
     const delBtn = card.querySelector(".admin-delete-task");
     delBtn.addEventListener("click", async () => {
@@ -638,7 +656,7 @@ async function renderAdminDetail(memberId) {
   });
 }
 
-async function renderAdminAssign() {
+async function renderAdminAssign(opts) {
   const select = document.getElementById("assign-member");
   if (!select.options.length) {
     try {
@@ -647,9 +665,23 @@ async function renderAdminAssign() {
     } catch (e) { toast(e.message); }
   }
 
-  if (STATE.adminQuestionEditor.mode === "edit" && STATE.adminQuestionEditor.taskId) {
-    await loadAdminQuestionEditor(STATE.adminQuestionEditor.taskId);
+  const editTask = (opts && opts.editTask) || (STATE.adminQuestionEditor.mode === "edit" && STATE.adminQuestionEditor.taskId ? { taskId: STATE.adminQuestionEditor.taskId } : null);
+  if (editTask) {
+    setAdminQuestionEditorMode("edit", editTask.taskId);
+    await loadAdminQuestionEditor(editTask);
+    return;
   }
+
+  setAdminQuestionEditorMode("create", null);
+  select.disabled = false;
+  document.querySelectorAll("#assign-type-tabs button").forEach(b => b.disabled = false);
+  document.getElementById("form-assign-task").reset();
+  document.getElementById("question-list").innerHTML = "";
+  document.getElementById("question-builder").classList.add("hidden");
+  document.getElementById("assign-desc-label").textContent = "Task detail";
+  document.getElementById("assign-desc").placeholder = "e.g. Perform analysis on farmer dataset";
+  document.getElementById("assign-points").value = "2";
+  document.getElementById("form-assign-task").querySelector("button[type='submit']").textContent = "Assign task";
 }
 
 function setAdminQuestionEditorMode(mode, taskId = null) {
@@ -694,7 +726,7 @@ function renderQuestionRows(questionList, questions) {
   items.forEach(q => appendQuestionRow(questionList, q));
 }
 
-async function loadAdminQuestionEditor(taskId) {
+async function loadAdminQuestionEditor(editTask) {
   const assignForm = document.getElementById("form-assign-task");
   const msg = document.getElementById("assign-msg");
   const title = document.getElementById("assign-desc");
@@ -709,13 +741,13 @@ async function loadAdminQuestionEditor(taskId) {
   const addBtn = document.getElementById("btn-add-question");
 
   try {
-    const detail = await api("adminGetQuestionTaskEditDetail", { taskId });
+    const detail = await api("getQuestionTaskDetail", { taskId: editTask.taskId, memberId: editTask.memberId });
     setAssignModeForQuestionEditor();
-    memberSelect.value = detail.memberId;
+    memberSelect.value = editTask.memberId || memberSelect.value;
     memberSelect.disabled = true;
-    weekSelect.value = String(detail.week);
-    pointsInput.value = String(detail.points);
-    title.value = detail.title || "";
+    weekSelect.value = String(editTask.week || weekSelect.value);
+    pointsInput.value = String(editTask.points || pointsInput.value);
+    title.value = editTask.title || detail.title || "";
     aimInput.value = detail.aim || "";
     label.textContent = "Task title";
     questionBuilder.classList.remove("hidden");
@@ -726,6 +758,8 @@ async function loadAdminQuestionEditor(taskId) {
     msg.classList.remove("hidden");
     submitBtn.textContent = "Save changes";
   } catch (err) {
+    memberSelect.disabled = false;
+    document.querySelectorAll("#assign-type-tabs button").forEach(b => b.disabled = false);
     toast(err.message || "Could not load task for editing.");
     setAdminQuestionEditorMode("create", null);
   }
@@ -836,24 +870,30 @@ function wireStaticForms() {
     submitBtn.textContent = "Assigning...";
 
     try {
-      if (assignType === "question") {
+        const isEditingQuestionTask = STATE.adminQuestionEditor.mode === "edit" && !!STATE.adminQuestionEditor.taskId;
+        if (assignType === "question" || isEditingQuestionTask) {
         const questions = Array.from(questionList.querySelectorAll(".q-text"))
           .map(i => i.value.trim())
           .filter(Boolean);
         if (!questions.length) throw new Error("Add at least one question.");
         const title = aim ? `Aim: ${aim} | Task: ${text}` : text;
-        await api("adminAssignQuestionTask", { memberId, week, title, points, questions });
+          if (isEditingQuestionTask) {
+            await api("adminAssignQuestionTask", { taskId: STATE.adminQuestionEditor.taskId, memberId, week, title, points, questions });
+          } else {
+            await api("adminAssignQuestionTask", { memberId, week, title, points, questions });
+          }
         questionList.innerHTML = "";
         addQuestionRow("");
       } else {
         await api("adminAssignTask", { memberId, week, aim, description: text, points });
       }
       msg.className = "hint";
-      msg.textContent = "Task assigned.";
+        msg.textContent = isEditingQuestionTask ? "Task updated." : "Task assigned.";
       assignForm.reset();
       pointsInput.value = "2";
-      setAssignMode(assignType);
-      toast("Task assigned");
+        setAdminQuestionEditorMode("create", null);
+        setAssignMode(isEditingQuestionTask ? "question" : assignType);
+        toast(isEditingQuestionTask ? "Task updated" : "Task assigned");
     } catch (err) {
       msg.className = "hint error";
       if (assignType === "question" && /Unknown action:\s*adminAssignQuestionTask/i.test(String(err.message || ""))) {
