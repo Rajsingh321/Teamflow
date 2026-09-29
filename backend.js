@@ -621,6 +621,7 @@ function wireStaticForms() {
     const payload = {
       memberId: document.getElementById("assign-member").value,
       week: Number(document.getElementById("assign-week").value),
+      aim: document.getElementById("assign-aim").value.trim(),
       description: document.getElementById("assign-desc").value.trim(),
       points: Number(document.getElementById("assign-points").value)
     };
