@@ -118,6 +118,7 @@ let STATE = {
   dashboard: null,  // {points, weeks:[{week,points,target}], tasks:[...]}
   activePane: "dashboard",
   logisticsTab: "logisticsA",
+  adminQuestionEditor: { mode: "create", taskId: null },
   chatMessages: [],
   chatTimer: null
 };
@@ -645,6 +646,99 @@ async function renderAdminAssign() {
       select.innerHTML = members.map(m => `<option value="${m.id}">${escapeHtml(m.name)} — ${escapeHtml(getMemberRoleLabel(m))}</option>`).join("");
     } catch (e) { toast(e.message); }
   }
+
+  if (STATE.adminQuestionEditor.mode === "edit" && STATE.adminQuestionEditor.taskId) {
+    await loadAdminQuestionEditor(STATE.adminQuestionEditor.taskId);
+  }
+}
+
+function setAdminQuestionEditorMode(mode, taskId = null) {
+  STATE.adminQuestionEditor = { mode, taskId };
+}
+
+function renumberQuestionRows(questionList) {
+  Array.from(questionList.querySelectorAll(".question-row")).forEach((row, index) => {
+    row.dataset.qid = String(index + 1);
+    const order = row.querySelector(".q-order");
+    if (order) order.textContent = `Q${index + 1}`;
+  });
+}
+
+function appendQuestionRow(questionList, text = "") {
+  const row = document.createElement("div");
+  row.className = "question-row";
+  row.innerHTML = `
+    <div class="question-row-head">
+      <span class="q-order"></span>
+      <button type="button" class="icon-btn q-remove" title="Remove question" aria-label="Remove question">✕</button>
+    </div>
+    <input type="text" class="q-text" placeholder="Question text" value="${escapeHtml(text)}">
+    <textarea class="q-answer-preview" rows="2" placeholder="Member answer box (auto-created)" disabled></textarea>`;
+  row.querySelector(".q-remove").addEventListener("click", () => {
+    row.remove();
+    if (!questionList.querySelectorAll(".question-row").length) appendQuestionRow(questionList, "");
+    renumberQuestionRows(questionList);
+  });
+  questionList.appendChild(row);
+  renumberQuestionRows(questionList);
+  return row;
+}
+
+function renderQuestionRows(questionList, questions) {
+  questionList.innerHTML = "";
+  const items = Array.isArray(questions) ? questions : [];
+  if (!items.length) {
+    appendQuestionRow(questionList, "");
+    return;
+  }
+  items.forEach(q => appendQuestionRow(questionList, q));
+}
+
+async function loadAdminQuestionEditor(taskId) {
+  const assignForm = document.getElementById("form-assign-task");
+  const msg = document.getElementById("assign-msg");
+  const title = document.getElementById("assign-desc");
+  const label = document.getElementById("assign-desc-label");
+  const questionBuilder = document.getElementById("question-builder");
+  const questionList = document.getElementById("question-list");
+  const memberSelect = document.getElementById("assign-member");
+  const weekSelect = document.getElementById("assign-week");
+  const pointsInput = document.getElementById("assign-points");
+  const aimInput = document.getElementById("assign-aim");
+  const submitBtn = assignForm.querySelector("button[type='submit']");
+  const addBtn = document.getElementById("btn-add-question");
+
+  try {
+    const detail = await api("adminGetQuestionTaskEditDetail", { taskId });
+    setAssignModeForQuestionEditor();
+    memberSelect.value = detail.memberId;
+    memberSelect.disabled = true;
+    weekSelect.value = String(detail.week);
+    pointsInput.value = String(detail.points);
+    title.value = detail.title || "";
+    aimInput.value = detail.aim || "";
+    label.textContent = "Task title";
+    questionBuilder.classList.remove("hidden");
+    addBtn.textContent = "+ Add Question";
+    renderQuestionRows(questionList, detail.questions || []);
+    msg.className = "hint";
+    msg.textContent = "Editing existing question task.";
+    msg.classList.remove("hidden");
+    submitBtn.textContent = "Save changes";
+  } catch (err) {
+    toast(err.message || "Could not load task for editing.");
+    setAdminQuestionEditorMode("create", null);
+  }
+}
+
+function setAssignModeForQuestionEditor() {
+  const questionBuilder = document.getElementById("question-builder");
+  const descLabel = document.getElementById("assign-desc-label");
+  const descInput = document.getElementById("assign-desc");
+  document.querySelectorAll("#assign-type-tabs button").forEach(b => b.classList.toggle("active", b.dataset.type === "question"));
+  questionBuilder.classList.remove("hidden");
+  descLabel.textContent = "Task title";
+  descInput.placeholder = "e.g. Restaurant follow-up questions";
 }
 
 function wireStaticForms() {
