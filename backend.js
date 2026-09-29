@@ -7,7 +7,7 @@
    ========================================================== */
 const CONFIG = {
   // Paste the URL you get after deploying apps-script.gs as a Web App
-  API_URL: "https://script.google.com/macros/s/AKfycbyIvtb5ikE2-cSzApoQIAie4kpQnxMb0qSgVYJqkATI_DGbU6ZVu-EpgvZpvqZhoJP5/exec",
+  API_URL: "https://script.google.com/macros/s/AKfycbxh34Fm-Z2DZYj4TEMcPh2f_-sM-9OgqssZPP3go-u2Yn7ONQYE7R9hHDNclNfcCsDc/exec",
 
   // Paste your Firebase project config (Project settings → General → Your apps → SDK config)
   FIREBASE: {
@@ -594,6 +594,15 @@ async function renderAdminDetail(memberId) {
     <p class="hint">${escapeHtml(getMemberRoleLabel(detail))} · ${detail.totalPoints}/25 pts</p>
     <div class="task-list" style="margin-top:14px;"></div>`;
   const list = host.querySelector(".task-list");
+
+  if (!detail.tasks || !detail.tasks.length) {
+    const empty = document.createElement("p");
+    empty.className = "hint";
+    empty.textContent = "No tasks assigned yet.";
+    list.appendChild(empty);
+    return;
+  }
+
   (detail.tasks || []).forEach(t => {
     const card = document.createElement("div");
     card.className = "task-card" + (t.completed ? " is-done" : "");
@@ -602,7 +611,28 @@ async function renderAdminDetail(memberId) {
         <div class="t-desc">${escapeHtml(t.description)}</div>
         <div class="t-meta">Week ${t.week} · ${t.points} pts${t.progress != null ? ` · ${t.progress}/${t.target}` : ""}</div>
       </div>
-      <span class="pill ${t.completed ? "done" : ""}">${t.completed ? "Done" : "Pending"}</span>`;
+      <div class="task-card-actions">
+        <span class="pill ${t.completed ? "done" : ""}">${t.completed ? "Done" : "Pending"}</span>
+        <button type="button" class="btn btn-ghost btn-sm admin-delete-task" aria-label="Delete task">Delete</button>
+      </div>`;
+
+    const delBtn = card.querySelector(".admin-delete-task");
+    delBtn.addEventListener("click", async () => {
+      const ok = window.confirm("Delete this task permanently? This cannot be undone.");
+      if (!ok) return;
+      delBtn.disabled = true;
+      delBtn.textContent = "Deleting...";
+      try {
+        await api("adminDeleteTask", { taskId: t.id });
+        toast("Task deleted");
+        await renderAdminDetail(memberId);
+      } catch (err) {
+        delBtn.disabled = false;
+        delBtn.textContent = "Delete";
+        toast(err.message || "Could not delete task.");
+      }
+    });
+
     list.appendChild(card);
   });
 }
@@ -618,63 +648,133 @@ async function renderAdminAssign() {
 }
 
 function wireStaticForms() {
+  const assignForm = document.getElementById("form-assign-task");
+  if (!assignForm || assignForm.dataset.bound === "1") return;
+  assignForm.dataset.bound = "1";
+
+  const aimInput = document.getElementById("assign-aim");
+  const memberSelect = document.getElementById("assign-member");
+  const weekSelect = document.getElementById("assign-week");
+  const descLabel = document.getElementById("assign-desc-label");
+  const descInput = document.getElementById("assign-desc");
+  const pointsInput = document.getElementById("assign-points");
+  const msg = document.getElementById("assign-msg");
+  const questionBuilder = document.getElementById("question-builder");
+  const questionList = document.getElementById("question-list");
+  const addQuestionBtn = document.getElementById("btn-add-question");
+
   let assignType = "checklist";
   let qCounter = 0;
 
+  function setAssignMode(nextType) {
+    assignType = nextType;
+    document.querySelectorAll("#assign-type-tabs button").forEach(b => b.classList.toggle("active", b.dataset.type === nextType));
+    questionBuilder.classList.toggle("hidden", nextType !== "question");
+    descLabel.textContent = nextType === "question" ? "Task title" : "Task detail";
+    descInput.placeholder = nextType === "question"
+      ? "e.g. Restaurant follow-up questions"
+      : "e.g. Perform analysis on farmer dataset";
+    if (nextType === "question" && !questionList.children.length) {
+      addQuestionRow("");
+    }
+  }
+
   document.querySelectorAll("#assign-type-tabs button").forEach(btn => {
     btn.addEventListener("click", () => {
-      assignType = btn.dataset.type;
-      document.querySelectorAll("#assign-type-tabs button").forEach(b => b.classList.toggle("active", b === btn));
-      document.getElementById("question-builder").classList.toggle("hidden", assignType !== "question");
-      document.getElementById("assign-desc-label").textContent = assignType === "question" ? "Task title" : "Task detail";
-      document.getElementById("assign-desc").placeholder = assignType === "question"
-        ? "e.g. Restaurant follow-up questions"
-        : "e.g. Perform analysis on farmer dataset";
+      setAssignMode(btn.dataset.type);
     });
   });
 
   function addQuestionRow(text) {
     qCounter++;
     const row = document.createElement("div");
-    row.className = "checklist-item";
+    row.className = "question-row";
     row.dataset.qid = qCounter;
     row.innerHTML = `
-      <input type="text" class="q-text" placeholder="Question text" value="${escapeHtml(text || "")}" style="flex:1;border:1.5px solid var(--line);border-radius:8px;padding:9px 12px;">
-      <button type="button" class="icon-btn q-remove" title="Remove question" aria-label="Remove question">✕</button>`;
+      <div class="question-row-head">
+        <span class="q-order">Q${qCounter}</span>
+        <button type="button" class="icon-btn q-remove" title="Remove question" aria-label="Remove question">✕</button>
+      </div>
+      <input type="text" class="q-text" placeholder="Question text" value="${escapeHtml(text || "")}">
+      <textarea class="q-answer-preview" rows="2" placeholder="Member answer box (auto-created)" disabled></textarea>`;
     row.querySelector(".q-remove").addEventListener("click", () => row.remove());
-    document.getElementById("question-list").appendChild(row);
+    questionList.appendChild(row);
+    return row;
   }
-  document.getElementById("btn-add-question").addEventListener("click", () => addQuestionRow(""));
 
-  document.getElementById("form-assign-task").addEventListener("submit", async (e) => {
+  addQuestionBtn.addEventListener("click", () => {
+    const row = addQuestionRow("");
+    const input = row.querySelector(".q-text");
+    if (input) input.focus();
+  });
+
+  assignForm.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const msg = document.getElementById("assign-msg");
-    const memberId = document.getElementById("assign-member").value;
-    const week = Number(document.getElementById("assign-week").value);
-    const points = Number(document.getElementById("assign-points").value);
-    const text = document.getElementById("assign-desc").value.trim();
+    msg.className = "hint hidden";
+
+    const memberId = memberSelect.value;
+    const week = Number(weekSelect.value);
+    const points = Number(pointsInput.value);
+    const aim = aimInput.value.trim();
+    const text = descInput.value.trim();
+    const submitBtn = assignForm.querySelector("button[type='submit']");
+
+    if (!memberId) {
+      msg.className = "hint error";
+      msg.textContent = "Please select a member.";
+      msg.classList.remove("hidden");
+      return;
+    }
+    if (!text) {
+      msg.className = "hint error";
+      msg.textContent = assignType === "question" ? "Please enter a task title." : "Please enter task detail.";
+      msg.classList.remove("hidden");
+      return;
+    }
+    if (!Number.isFinite(points) || points < 1 || points > 25) {
+      msg.className = "hint error";
+      msg.textContent = "Points must be between 1 and 25.";
+      msg.classList.remove("hidden");
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Assigning...";
 
     try {
       if (assignType === "question") {
-        const questions = Array.from(document.querySelectorAll("#question-list .q-text"))
+        const questions = Array.from(questionList.querySelectorAll(".q-text"))
           .map(i => i.value.trim())
           .filter(Boolean);
         if (!questions.length) throw new Error("Add at least one question.");
-        await api("adminAssignQuestionTask", { memberId, week, title: text, points, questions });
-        document.getElementById("question-list").innerHTML = "";
+        const title = aim ? `Aim: ${aim} | Task: ${text}` : text;
+        await api("adminAssignQuestionTask", { memberId, week, title, points, questions });
+        questionList.innerHTML = "";
+        addQuestionRow("");
       } else {
-        await api("adminAssignTask", { memberId, week, description: text, points });
+        await api("adminAssignTask", { memberId, week, aim, description: text, points });
       }
       msg.className = "hint";
       msg.textContent = "Task assigned.";
-      document.getElementById("form-assign-task").reset();
+      assignForm.reset();
+      pointsInput.value = "2";
+      setAssignMode(assignType);
       toast("Task assigned");
     } catch (err) {
       msg.className = "hint error";
-      msg.textContent = err.message;
+      if (assignType === "question" && /Unknown action:\s*adminAssignQuestionTask/i.test(String(err.message || ""))) {
+        msg.textContent = "Backend is outdated for Question tasks. Redeploy Apps Script as a new web app version and update API_URL.";
+      } else {
+        msg.textContent = err.message;
+      }
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Assign task";
     }
     msg.classList.remove("hidden");
   });
+
+  setAssignMode(assignType);
 }
 
 /* ==========================================================
