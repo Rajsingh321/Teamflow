@@ -110,6 +110,9 @@
       <section id="pane-admin-assign" class="pane hidden">
         <h2 class="pane-title">Assign a task</h2>
         <form id="form-assign-task" class="stack-form">
+          <label for="assign-aim">Aim</label>
+          <textarea id="assign-aim" rows="2" placeholder="e.g. Improve lead quality and conversion in this week"></textarea>
+
           <label for="assign-member">Member</label>
           <select id="assign-member" required></select>
 
@@ -119,10 +122,7 @@
             <option value="2">Week 2</option>
             <option value="3">Week 3</option>
           </select>
-           
-          <label for="assign-aim">Aim</label>
-          <textarea id="assign-aim" rows="2" placeholder="e.g. Improve lead quality and conversion in this week"></textarea>
-          
+
           <label for="assign-desc">Task detail</label>
           <textarea id="assign-desc" rows="3" placeholder="e.g. Perform analysis on farmer dataset" required></textarea>
 
