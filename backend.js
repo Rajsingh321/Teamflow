@@ -274,7 +274,7 @@ function buildBottomNav() {
   );
 }
 
-const PANE_IDS = ["dashboard", "form", "chat", "profile", "admin-team", "admin-detail", "admin-assign"];
+const PANE_IDS = ["dashboard", "form", "chat", "profile", "admin-team", "admin-detail", "admin-assign", "question-task"];
 
 async function goTo(pane, opts) {
   STATE.activePane = pane;
@@ -287,7 +287,8 @@ async function goTo(pane, opts) {
   if (pane === "profile") await renderProfile();
   if (pane === "admin-team") await renderAdminTeam();
   if (pane === "admin-detail") await renderAdminDetail(opts && opts.memberId);
-  if (pane === "admin-assign") await renderAdminAssign();
+    if (pane === "admin-assign") await renderAdminAssign();
+  if (pane === "question-task") await renderQuestionTaskPane(opts && opts.taskId);
 
   document.getElementById("content").scrollTo({ top: 0 });
 }
@@ -319,7 +320,7 @@ async function renderDashboard() {
     weekBars.appendChild(row);
   });
 
-  const list = document.getElementById("task-list");
+    const list = document.getElementById("task-list");
   list.innerHTML = "";
   (d.tasks || []).forEach(t => {
     const card = document.createElement("div");
@@ -330,11 +331,12 @@ async function renderDashboard() {
         <div class="t-meta">Week ${t.week} · ${t.points} pts${t.progress != null ? ` · ${t.progress}/${t.target}` : ""}</div>
       </div>
       <span class="pill ${t.completed ? "done" : ""}">${t.completed ? "Done" : "Pending"}</span>`;
+    if (t.type === "QUESTION") {
+      card.style.cursor = "pointer";
+      card.addEventListener("click", () => goTo("question-task", { taskId: t.id }));
+    }
     list.appendChild(card);
   });
-  if (!d.tasks || !d.tasks.length) {
-    list.innerHTML = `<p class="hint">No tasks assigned yet.</p>`;
-  }
 }
 
 /* ==========================================================
@@ -616,18 +618,53 @@ async function renderAdminAssign() {
 }
 
 function wireStaticForms() {
+  let assignType = "checklist";
+  let qCounter = 0;
+
+  document.querySelectorAll("#assign-type-tabs button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      assignType = btn.dataset.type;
+      document.querySelectorAll("#assign-type-tabs button").forEach(b => b.classList.toggle("active", b === btn));
+      document.getElementById("question-builder").classList.toggle("hidden", assignType !== "question");
+      document.getElementById("assign-desc-label").textContent = assignType === "question" ? "Task title" : "Task detail";
+      document.getElementById("assign-desc").placeholder = assignType === "question"
+        ? "e.g. Restaurant follow-up questions"
+        : "e.g. Perform analysis on farmer dataset";
+    });
+  });
+
+  function addQuestionRow(text) {
+    qCounter++;
+    const row = document.createElement("div");
+    row.className = "checklist-item";
+    row.dataset.qid = qCounter;
+    row.innerHTML = `
+      <input type="text" class="q-text" placeholder="Question text" value="${escapeHtml(text || "")}" style="flex:1;border:1.5px solid var(--line);border-radius:8px;padding:9px 12px;">
+      <button type="button" class="icon-btn q-remove" title="Remove question" aria-label="Remove question">✕</button>`;
+    row.querySelector(".q-remove").addEventListener("click", () => row.remove());
+    document.getElementById("question-list").appendChild(row);
+  }
+  document.getElementById("btn-add-question").addEventListener("click", () => addQuestionRow(""));
+
   document.getElementById("form-assign-task").addEventListener("submit", async (e) => {
     e.preventDefault();
-    const payload = {
-      memberId: document.getElementById("assign-member").value,
-      week: Number(document.getElementById("assign-week").value),
-      aim: document.getElementById("assign-aim").value.trim(),
-      description: document.getElementById("assign-desc").value.trim(),
-      points: Number(document.getElementById("assign-points").value)
-    };
     const msg = document.getElementById("assign-msg");
+    const memberId = document.getElementById("assign-member").value;
+    const week = Number(document.getElementById("assign-week").value);
+    const points = Number(document.getElementById("assign-points").value);
+    const text = document.getElementById("assign-desc").value.trim();
+
     try {
-      await api("adminAssignTask", payload);
+      if (assignType === "question") {
+        const questions = Array.from(document.querySelectorAll("#question-list .q-text"))
+          .map(i => i.value.trim())
+          .filter(Boolean);
+        if (!questions.length) throw new Error("Add at least one question.");
+        await api("adminAssignQuestionTask", { memberId, week, title: text, points, questions });
+        document.getElementById("question-list").innerHTML = "";
+      } else {
+        await api("adminAssignTask", { memberId, week, description: text, points });
+      }
       msg.className = "hint";
       msg.textContent = "Task assigned.";
       document.getElementById("form-assign-task").reset();
@@ -637,9 +674,73 @@ function wireStaticForms() {
       msg.textContent = err.message;
     }
     msg.classList.remove("hidden");
-  }, { once: false });
+  });
 }
 
+/* ==========================================================
+   QUESTION TASK — member view
+   ========================================================== */
+async function renderQuestionTaskPane(taskId) {
+  const host = document.getElementById("question-task-host");
+  host.innerHTML = `<p class="hint">Loading…</p>`;
+  let task;
+  try { task = await api("getQuestionTaskDetail", { taskId, memberId: STATE.user.id }); }
+  catch (e) { toast(e.message); goTo("dashboard"); return; }
+
+  host.innerHTML = `<h2 class="pane-title" style="margin-top:0">${escapeHtml(task.title)}</h2>`;
+
+  if (task.completed) {
+    host.innerHTML += `<p class="hint">✓ Already submitted — thanks!</p>`;
+    task.questions.forEach(q => {
+      const box = document.createElement("div");
+      box.className = "task-card";
+      box.innerHTML = `<div class="t-body"><div class="t-desc">${escapeHtml(q.text)}</div><div class="t-meta">${escapeHtml(q.answer)}</div></div>`;
+      host.appendChild(box);
+    });
+    return;
+  }
+
+  const form = document.createElement("form");
+  form.className = "stack-form";
+  task.questions.forEach(q => {
+    const label = document.createElement("label");
+    label.textContent = `${q.no}. ${q.text}`;
+    form.appendChild(label);
+    const ta = document.createElement("textarea");
+    ta.rows = 3;
+    ta.dataset.no = q.no;
+    form.appendChild(ta);
+  });
+  const btn = document.createElement("button");
+  btn.type = "submit";
+  btn.className = "btn btn-primary btn-block";
+  btn.style.marginTop = "18px";
+  btn.textContent = "Submit Answers";
+  form.appendChild(btn);
+  const msg = document.createElement("p");
+  msg.className = "hint hidden";
+  form.appendChild(msg);
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    btn.disabled = true;
+    btn.textContent = "Submitting…";
+    const answers = Array.from(form.querySelectorAll("textarea")).map(t => ({ no: t.dataset.no, answer: t.value.trim() }));
+    try {
+      const result = await api("submitQuestionAnswers", { taskId, memberId: STATE.user.id, answers });
+      toast(`Submitted — +${result.pointsAwarded} pts`);
+      goTo("dashboard");
+    } catch (err) {
+      msg.className = "hint error";
+      msg.textContent = err.message;
+      msg.classList.remove("hidden");
+      btn.disabled = false;
+      btn.textContent = "Submit Answers";
+    }
+  });
+
+  host.appendChild(form);
+}
 /* ==========================================================
    Firebase Cloud Messaging (push notifications)
    ========================================================== */
