@@ -337,7 +337,11 @@ function handleAdminGetSheetUrl() {
 function handleAdminAssignTask(p) {
   const sheet = ss().getSheetByName("Tasks");
   const id = "T" + new Date().getTime();
-  sheet.appendRow([id, p.memberId, p.week, "CHECKLIST", p.description, "", p.points, false, "", 0, "", ""]);
+  const aim = String(p.aim || "").trim();
+  const taskDetail = String(p.description || "").trim();
+  if (!taskDetail) throw new Error("Task detail is required.");
+  const finalDescription = aim ? `Aim: ${aim} | Task: ${taskDetail}` : taskDetail;
+  sheet.appendRow([id, p.memberId, p.week, "CHECKLIST", finalDescription, "", p.points, false, "", 0, "", ""]);
   return { ok: true, taskId: id };
 }
 
