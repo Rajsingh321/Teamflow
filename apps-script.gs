@@ -47,7 +47,7 @@ function doPost(e) {
   const payload = body.payload || {};
 
   try {
-    const handlers = {
+        const handlers = {
       login: handleLogin,
       getDashboard: handleGetDashboard,
       submitForm: handleSubmitForm,
@@ -59,7 +59,10 @@ function doPost(e) {
       adminGetTeam: handleAdminGetTeam,
       adminGetMemberDetail: handleAdminGetMemberDetail,
       adminGetSheetUrl: handleAdminGetSheetUrl,
-      adminAssignTask: handleAdminAssignTask
+      adminAssignTask: handleAdminAssignTask,
+      adminAssignQuestionTask: handleAdminAssignQuestionTask,
+      getQuestionTaskDetail: handleGetQuestionTaskDetail,
+      submitQuestionAnswers: handleSubmitQuestionAnswers
     };
     if (!handlers[action]) return respond({ ok: false, error: "Unknown action: " + action });
     const result = handlers[action](payload);
@@ -343,6 +346,114 @@ function handleAdminAssignTask(p) {
   const finalDescription = aim ? `Aim: ${aim} | Task: ${taskDetail}` : taskDetail;
   sheet.appendRow([id, p.memberId, p.week, "CHECKLIST", finalDescription, "", p.points, false, "", 0, "", ""]);
   return { ok: true, taskId: id };
+}
+
+/* ============================== QUESTION TASKS =============================== */
+
+function handleAdminAssignQuestionTask(p) {
+  const book = ss();
+  const usersSheet = book.getSheetByName("Users");
+  const uRows = usersSheet.getDataRange().getValues();
+  const uIdx = colIndex(uRows[0]);
+  let memberName = p.memberId;
+  for (let i = 1; i < uRows.length; i++) {
+    if (String(uRows[i][uIdx.Member_ID]) === String(p.memberId)) { memberName = uRows[i][uIdx.Name]; break; }
+  }
+  const firstName = String(memberName).trim().split(" ")[0];
+
+  // Find the next free "<FirstName>_taskN" sheet name
+  let n = 1;
+  let sheetName = firstName + "_task" + n;
+  while (book.getSheetByName(sheetName)) {
+    n++;
+    sheetName = firstName + "_task" + n;
+  }
+
+  const qSheet = book.insertSheet(sheetName);
+  qSheet.appendRow(["Question No.", "Question", "Answer", "Submitted At"]);
+  qSheet.setFrozenRows(1);
+  (p.questions || []).forEach((q, i) => qSheet.appendRow([i + 1, q, "", ""]));
+
+  const tasksSheet = book.getSheetByName("Tasks");
+  const id = "T" + new Date().getTime();
+  tasksSheet.appendRow([
+    id, p.memberId, p.week, "QUESTION", p.title, sheetName,
+    p.points, false, "", 0, (p.questions || []).length, ""
+  ]);
+
+  return { ok: true, taskId: id, sheetName: sheetName };
+}
+
+function handleGetQuestionTaskDetail(p) {
+  const book = ss();
+  const tasksSheet = book.getSheetByName("Tasks");
+  const tRows = tasksSheet.getDataRange().getValues();
+  const tIdx = colIndex(tRows[0]);
+  let task = null;
+  for (let i = 1; i < tRows.length; i++) {
+    if (String(tRows[i][tIdx.Task_ID]) === String(p.taskId)) {
+      task = {
+        title: tRows[i][tIdx.Description],
+        sheetName: tRows[i][tIdx.Source_Sheet],
+        points: Number(tRows[i][tIdx.Points]),
+        completed: tRows[i][tIdx.Completed] === true || tRows[i][tIdx.Completed] === "TRUE"
+      };
+      break;
+    }
+  }
+  if (!task) throw new Error("Task not found.");
+
+  const qSheet = book.getSheetByName(task.sheetName);
+  const qRows = qSheet.getDataRange().getValues();
+  const qIdx = colIndex(qRows[0]);
+  const questions = [];
+  for (let i = 1; i < qRows.length; i++) {
+    questions.push({
+      no: qRows[i][qIdx["Question No."]],
+      text: qRows[i][qIdx.Question],
+      answer: qRows[i][qIdx.Answer] || ""
+    });
+  }
+  return { title: task.title, points: task.points, completed: task.completed, questions: questions };
+}
+
+function handleSubmitQuestionAnswers(p) {
+  const book = ss();
+  const tasksSheet = book.getSheetByName("Tasks");
+  const tRows = tasksSheet.getDataRange().getValues();
+  const tIdx = colIndex(tRows[0]);
+  let taskRowIndex = -1, sheetName = "", points = 0, alreadyDone = false;
+  for (let i = 1; i < tRows.length; i++) {
+    if (String(tRows[i][tIdx.Task_ID]) === String(p.taskId)) {
+      taskRowIndex = i;
+      sheetName = tRows[i][tIdx.Source_Sheet];
+      points = Number(tRows[i][tIdx.Points]);
+      alreadyDone = tRows[i][tIdx.Completed] === true || tRows[i][tIdx.Completed] === "TRUE";
+      break;
+    }
+  }
+  if (taskRowIndex === -1) throw new Error("Task not found.");
+  if (alreadyDone) throw new Error("This task was already submitted.");
+
+  const qSheet = book.getSheetByName(sheetName);
+  const qRows = qSheet.getDataRange().getValues();
+  const qIdx = colIndex(qRows[0]);
+  const now = new Date();
+
+  (p.answers || []).forEach(a => {
+    for (let i = 1; i < qRows.length; i++) {
+      if (Number(qRows[i][qIdx["Question No."]]) === Number(a.no)) {
+        qSheet.getRange(i + 1, qIdx.Answer + 1).setValue(a.answer);
+        qSheet.getRange(i + 1, qIdx["Submitted At"] + 1).setValue(now);
+        break;
+      }
+    }
+  });
+
+  tasksSheet.getRange(taskRowIndex + 1, tIdx.Completed + 1).setValue(true);
+  tasksSheet.getRange(taskRowIndex + 1, tIdx.Points_Awarded + 1).setValue(points);
+
+  return { ok: true, pointsAwarded: points };
 }
 
 /* ============================== FCM PUSH (HTTP v1, optional) ================ */
