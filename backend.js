@@ -878,9 +878,20 @@ function wireStaticForms() {
     submitBtn.disabled = true;
     submitBtn.textContent = "Assigning...";
 
-    try {
+        try {
         const isEditingQuestionTask = STATE.adminQuestionEditor.mode === "edit" && !!STATE.adminQuestionEditor.taskId;
-        if (assignType === "question" || isEditingQuestionTask) {
+        if (assignType === "repeat") {
+        const questions = Array.from(questionList.querySelectorAll(".q-text"))
+          .map(i => i.value.trim())
+          .filter(Boolean);
+        if (!questions.length) throw new Error("Add at least one question.");
+        const count = Number(document.getElementById("assign-count").value);
+        if (!count || count < 1) throw new Error("Entry count must be at least 1.");
+        const title = aim ? `Aim: ${aim} | Task: ${text}` : text;
+        await api("adminAssignRepeatForm", { memberId, week, title, points, count, questions });
+        questionList.innerHTML = "";
+        addQuestionRow("");
+      } else if (assignType === "question" || isEditingQuestionTask) {
         const questions = Array.from(questionList.querySelectorAll(".q-text"))
           .map(i => i.value.trim())
           .filter(Boolean);
@@ -891,6 +902,11 @@ function wireStaticForms() {
           } else {
             await api("adminAssignQuestionTask", { memberId, week, title, points, questions });
           }
+        questionList.innerHTML = "";
+        addQuestionRow("");
+      } else {
+        await api("adminAssignTask", { memberId, week, aim, description: text, points });
+      }
         questionList.innerHTML = "";
         addQuestionRow("");
       } else {
@@ -984,6 +1000,81 @@ async function renderQuestionTaskPane(taskId) {
 
   host.appendChild(form);
 }
+
+/* ==========================================================
+   REPEAT FORM TASK — member view (submit the same form N times)
+   ========================================================== */
+async function renderRepeatFormPane(taskId) {
+  const host = document.getElementById("repeat-form-host");
+  host.innerHTML = `<p class="hint">Loading…</p>`;
+  let task;
+  try { task = await api("getRepeatFormDetail", { taskId }); }
+  catch (e) { toast(e.message); goTo("dashboard"); return; }
+
+  paint(task);
+
+  function paint(task) {
+    host.innerHTML = `
+      <h2 class="pane-title" style="margin-top:0">${escapeHtml(task.title)}</h2>
+      <p class="form-progress">Entry ${Math.min(task.progress + 1, task.target)} of ${task.target}${task.completed ? " — all done ✓" : ""}</p>`;
+
+    if (task.completed) {
+      const done = document.createElement("p");
+      done.className = "hint";
+      done.textContent = `All ${task.target} entries collected — thanks!`;
+      host.appendChild(done);
+      return;
+    }
+
+    const form = document.createElement("form");
+    form.className = "stack-form";
+    const inputs = {};
+    task.questions.forEach(q => {
+      const label = document.createElement("label");
+      label.textContent = q;
+      form.appendChild(label);
+      const ta = document.createElement("textarea");
+      ta.rows = 2;
+      form.appendChild(ta);
+      inputs[q] = ta;
+    });
+    const btn = document.createElement("button");
+    btn.type = "submit";
+    btn.className = "btn btn-primary btn-block";
+    btn.style.marginTop = "18px";
+    btn.textContent = "Submit entry";
+    form.appendChild(btn);
+    const msg = document.createElement("p");
+    msg.className = "hint hidden";
+    form.appendChild(msg);
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      btn.disabled = true;
+      btn.textContent = "Submitting…";
+      const data = {};
+      task.questions.forEach(q => { data[q] = inputs[q].value.trim(); });
+      try {
+        const result = await api("submitForm", { memberId: STATE.user.id, sheet: task.sheet, formType: null, data });
+        toast(result.pointsAwarded ? `All entries done — +${result.pointsAwarded} pts!` : `Saved (${result.progress}/${result.target})`);
+        task.progress = result.progress;
+        task.completed = !!result.pointsAwarded;
+        paint(task);
+      } catch (err) {
+        msg.className = "hint error";
+        msg.textContent = err.message;
+        msg.classList.remove("hidden");
+        btn.disabled = false;
+        btn.textContent = "Submit entry";
+      }
+    });
+
+    host.appendChild(form);
+  }
+}
+
+/* ==========================================================
+   Firebase Cloud Messaging (push notifications)
 /* ==========================================================
    Firebase Cloud Messaging (push notifications)
    ========================================================== */
