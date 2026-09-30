@@ -125,19 +125,25 @@
           </select>
 
           <div class="subform-tabs" id="assign-type-tabs">
-  <button type="button" class="active" data-type="checklist">Checklist task</button>
-  <button type="button" data-type="question">Question task</button>
-</div>
+            <button type="button" class="active" data-type="checklist">Checklist task</button>
+            <button type="button" data-type="question">Question task</button>
+            <button type="button" data-type="repeat">Repeat form task</button>
+          </div>
 
-<label for="assign-desc" id="assign-desc-label">Task detail</label>
+          <label for="assign-desc" id="assign-desc-label">Task detail</label>
           <textarea id="assign-desc" rows="3" placeholder="e.g. Perform analysis on farmer dataset" required></textarea>
 
           <div id="question-builder" class="hidden">
-  <label>Questions</label>
+            <label>Questions</label>
             <p class="hint question-builder-note">Each question creates an answer box automatically for the assigned member.</p>
-  <div id="question-list"></div>
-  <button type="button" id="btn-add-question" class="btn btn-ghost btn-sm" style="margin-top:6px;">+ Add Question</button>
-</div>
+            <div id="question-list"></div>
+            <button type="button" id="btn-add-question" class="btn btn-ghost btn-sm" style="margin-top:6px;">+ Add Question</button>
+          </div>
+
+          <div id="repeat-count-field" class="hidden">
+            <label for="assign-count">Entries required (e.g. 10 for 10 farmers)</label>
+            <input id="assign-count" type="number" min="1" value="10">
+          </div>
 
           <label for="assign-points">Points</label>
           <input id="assign-points" type="number" min="1" max="25" value="2" required>
@@ -150,6 +156,12 @@
       <section id="pane-question-task" class="pane hidden">
         <button class="back-link" data-back="dashboard">← Back</button>
         <div id="question-task-host"></div>
+      </section>
+
+      <!-- REPEAT FORM TASK (member view) -->
+      <section id="pane-repeat-form" class="pane hidden">
+        <button class="back-link" data-back="dashboard">← Back</button>
+        <div id="repeat-form-host"></div>
       </section>
       
     </main>
