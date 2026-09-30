@@ -275,7 +275,7 @@ function buildBottomNav() {
   );
 }
 
-const PANE_IDS = ["dashboard", "form", "chat", "profile", "admin-team", "admin-detail", "admin-assign", "question-task"];
+const PANE_IDS = ["dashboard", "form", "chat", "profile", "admin-team", "admin-detail", "admin-assign", "question-task", "repeat-form"];
 
 async function goTo(pane, opts) {
   STATE.activePane = pane;
@@ -290,6 +290,7 @@ async function goTo(pane, opts) {
   if (pane === "admin-detail") await renderAdminDetail(opts && opts.memberId);
   if (pane === "admin-assign") await renderAdminAssign(opts);
   if (pane === "question-task") await renderQuestionTaskPane(opts && opts.taskId);
+  if (pane === "repeat-form") await renderRepeatFormPane(opts && opts.taskId);
 
   document.getElementById("content").scrollTo({ top: 0 });
 }
@@ -335,6 +336,10 @@ async function renderDashboard() {
     if (t.type === "QUESTION") {
       card.style.cursor = "pointer";
       card.addEventListener("click", () => goTo("question-task", { taskId: t.id }));
+    }
+    if (t.type === "COUNT" && t.formType === "DYNAMIC_REPEAT") {
+      card.style.cursor = "pointer";
+      card.addEventListener("click", () => goTo("repeat-form", { taskId: t.id }));
     }
     list.appendChild(card);
   });
@@ -794,15 +799,19 @@ function wireStaticForms() {
   let assignType = "checklist";
   let qCounter = 0;
 
-  function setAssignMode(nextType) {
+    function setAssignMode(nextType) {
     assignType = nextType;
     document.querySelectorAll("#assign-type-tabs button").forEach(b => b.classList.toggle("active", b.dataset.type === nextType));
-    questionBuilder.classList.toggle("hidden", nextType !== "question");
-    descLabel.textContent = nextType === "question" ? "Task title" : "Task detail";
-    descInput.placeholder = nextType === "question"
+    const usesQuestions = nextType === "question" || nextType === "repeat";
+    questionBuilder.classList.toggle("hidden", !usesQuestions);
+    document.getElementById("repeat-count-field").classList.toggle("hidden", nextType !== "repeat");
+    descLabel.textContent = usesQuestions ? "Task title" : "Task detail";
+    descInput.placeholder = nextType === "repeat"
+      ? "e.g. Collect 10 farmers' data"
+      : nextType === "question"
       ? "e.g. Restaurant follow-up questions"
       : "e.g. Perform analysis on farmer dataset";
-    if (nextType === "question" && !questionList.children.length) {
+    if (usesQuestions && !questionList.children.length) {
       addQuestionRow("");
     }
   }
