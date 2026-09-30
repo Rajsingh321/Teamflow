@@ -878,9 +878,9 @@ function wireStaticForms() {
     submitBtn.disabled = true;
     submitBtn.textContent = "Assigning...";
 
-    try {
-      const isEditingQuestionTask = STATE.adminQuestionEditor.mode === "edit" && !!STATE.adminQuestionEditor.taskId;
-      if (assignType === "repeat") {
+        try {
+        const isEditingQuestionTask = STATE.adminQuestionEditor.mode === "edit" && !!STATE.adminQuestionEditor.taskId;
+        if (assignType === "repeat") {
         const questions = Array.from(questionList.querySelectorAll(".q-text"))
           .map(i => i.value.trim())
           .filter(Boolean);
@@ -897,21 +897,16 @@ function wireStaticForms() {
           .filter(Boolean);
         if (!questions.length) throw new Error("Add at least one question.");
         const title = aim ? `Aim: ${aim} | Task: ${text}` : text;
-        if (isEditingQuestionTask) {
-          await api("adminAssignQuestionTask", { taskId: STATE.adminQuestionEditor.taskId, memberId, week, title, points, questions });
-        } else {
-          await api("adminAssignQuestionTask", { memberId, week, title, points, questions });
-        }
+          if (isEditingQuestionTask) {
+            await api("adminAssignQuestionTask", { taskId: STATE.adminQuestionEditor.taskId, memberId, week, title, points, questions });
+          } else {
+            await api("adminAssignQuestionTask", { memberId, week, title, points, questions });
+          }
         questionList.innerHTML = "";
         addQuestionRow("");
       } else {
         await api("adminAssignTask", { memberId, week, aim, description: text, points });
       }
-      questionList.innerHTML = "";
-      addQuestionRow("");
-    } else {
-      await api("adminAssignTask", { memberId, week, aim, description: text, points });
-    }
     msg.className = "hint";
     msg.textContent = isEditingQuestionTask ? "Task updated." : "Task assigned.";
     assignForm.reset();
